@@ -277,15 +277,17 @@ async def process_dubbing(session_id: str, dub_request: DubRequest):
         print(f"[DUBBING {session_id}] Voice option: {dub_request.voice_option}, Style: {dub_request.voice_style}")
         
         try:
-            dubbed_audio_path = await tts_service.create_dubbed_audio(
+            # Use synchronized dubbing to preserve timing and pauses
+            dubbed_audio_path = await tts_service.create_synchronized_dubbed_audio(
                 transcription_result["transcription_data"],
                 translated_text,
                 original_audio_path,
                 dub_request.voice_option,
                 voice_settings,
-                session_id
+                session_id,
+                dub_request.target_language
             )
-            print(f"[DUBBING {session_id}] Voice generation completed: {dubbed_audio_path}")
+            print(f"[DUBBING {session_id}] Synchronized voice generation completed: {dubbed_audio_path}")
         except Exception as tts_error:
             print(f"[DUBBING {session_id}] TTS ERROR: {str(tts_error)}")
             raise tts_error

@@ -44,22 +44,34 @@ def download_video_audio(video_url: str, temp_dir: str) -> tuple[str, Dict[str, 
         'noplaylist': True,
         'quiet': True,
         'no_warnings': False,
-        # Add headers to avoid detection
+        # Enhanced headers to better mimic a real browser
         'http_headers': {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'en-us,en;q=0.5',
+            'Accept-Encoding': 'gzip,deflate',
+            'Accept-Charset': 'ISO-8859-1,utf-8;q=0.7,*;q=0.7',
+            'Keep-Alive': '300',
+            'Connection': 'keep-alive',
         },
         # Retry options
-        'retries': 3,
-        'fragment_retries': 3,
+        'retries': 5,
+        'fragment_retries': 5,
         # Use cookies if available
         'cookiesfrombrowser': None,
-        # Additional options to handle signature extraction issues
+        # Enhanced YouTube-specific options
         'extractor_args': {
             'youtube': {
-                'player_client': ['web'],
-                'player_skip': ['configs'],
+                'player_client': ['web', 'tv_embed'],
+                'player_skip': ['webpage', 'configs'],
+                'skip': ['hls', 'dash'],
             }
         },
+        # Additional anti-detection options
+        'ignoreerrors': False,
+        'age_limit': None,
+        'writesubtitles': False,
+        'writeautomaticsub': False,
     }
     
     try:
@@ -168,6 +180,16 @@ async def transcribe_audio_file(audio_path: str) -> Dict[str, Any]:
         }
         
         if response and "results" in response:
+            print(f"[TRANSCRIPTION] Deepgram response keys: {list(response.keys())}")
+            print(f"[TRANSCRIPTION] Results keys: {list(response['results'].keys())}")
+            
+            # Check if utterances are at the results level (Deepgram v2)
+            results_utterances = response["results"].get("utterances", [])
+            print(f"[TRANSCRIPTION] Results utterances: {results_utterances}")
+            if results_utterances:
+                print(f"[TRANSCRIPTION] Found {len(results_utterances)} utterances at results level")
+                transcription_data["utterances"] = results_utterances
+            
             channels = response["results"].get("channels", [])
             if channels and len(channels) > 0:
                 channel = channels[0]
@@ -184,9 +206,11 @@ async def transcribe_audio_file(audio_path: str) -> Dict[str, Any]:
                     words = alternative.get("words", [])
                     transcription_data["words"] = words
                 
-                # Get utterance-level timestamps
-                utterances = channel.get("utterances", [])
-                transcription_data["utterances"] = utterances
+                # Get utterance-level timestamps (try channel level if not found at results level)
+                if not transcription_data["utterances"]:
+                    utterances = channel.get("utterances", [])
+                    transcription_data["utterances"] = utterances
+                    print(f"[TRANSCRIPTION] Found {len(utterances)} utterances at channel level")
                 
                 # Get paragraph-level timestamps
                 paragraphs = channel.get("paragraphs", [])

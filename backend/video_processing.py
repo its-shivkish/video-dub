@@ -41,11 +41,15 @@ class VideoProcessor:
             Path to final dubbed video file
         """
         try:
-            print(f"[VIDEO_PROCESSOR] Starting video combination...")
+            print(f"[VIDEO_PROCESSOR] Starting video/audio combination...")
             print(f"[VIDEO_PROCESSOR] Original video: {original_video_path}")
             print(f"[VIDEO_PROCESSOR] Dubbed audio: {dubbed_audio_path}")
             print(f"[VIDEO_PROCESSOR] Video exists: {os.path.exists(original_video_path)}")
             print(f"[VIDEO_PROCESSOR] Audio exists: {os.path.exists(dubbed_audio_path)}")
+            
+            if os.path.exists(dubbed_audio_path):
+                audio_size = os.path.getsize(dubbed_audio_path)
+                print(f"[VIDEO_PROCESSOR] Dubbed audio file size: {audio_size} bytes")
             
             output_path = os.path.join(self.temp_dir, "dubbed_video.mp4")
             print(f"[VIDEO_PROCESSOR] Output path: {output_path}")
@@ -54,30 +58,29 @@ class VideoProcessor:
             duration = transcription_data.get("duration", None)
             print(f"[VIDEO_PROCESSOR] Duration from transcription: {duration}")
             
-            # Use FFmpeg to combine video and audio
-            video_input = ffmpeg.input(original_video_path)
-            audio_input = ffmpeg.input(dubbed_audio_path)
+            # Use FFmpeg to replace original audio with dubbed audio ONLY
+            print(f"[VIDEO_PROCESSOR] FFmpeg inputs created - video and audio streams")
             
-            # Create output with original video and new audio - explicit method
-            stream = ffmpeg.output(
-                video_input['v:0'],  # Video stream from original (first video stream)
-                audio_input['a:0'],  # Audio stream from dubbed audio (first audio stream)
-                output_path,
-                vcodec='copy',  # Copy video without re-encoding
-                acodec='aac'    # Encode audio as AAC
-            )
+            # Direct FFmpeg command approach for explicit audio replacement
+            cmd = [
+                'ffmpeg', 
+                '-i', original_video_path,  # Input 0: original video (has both video and audio)
+                '-i', dubbed_audio_path,    # Input 1: dubbed audio only
+                '-map', '0:v:0',           # Map video stream 0 from input 0 (original video)
+                '-map', '1:a:0',           # Map audio stream 0 from input 1 (dubbed audio)
+                '-c:v', 'copy',            # Copy video codec (no re-encoding)
+                '-c:a', 'aac',             # Encode audio to AAC
+                '-shortest',               # Use shortest stream duration
+                '-y',                      # Overwrite output file
+                output_path
+            ]
             
-            # Add flags explicitly
-            stream = stream.overwrite_output()  # Equivalent to -y flag
-            stream = stream.global_args('-shortest')  # Match shortest stream duration
+            print(f"[VIDEO_PROCESSOR] FFmpeg command: {' '.join(cmd)}")
+            print(f"[VIDEO_PROCESSOR] ✓ Explicitly mapping video from original, audio from dubbed file only")
             
-            # Show the FFmpeg command that will be executed
-            ffmpeg_cmd = ffmpeg.compile(stream)
-            print(f"[VIDEO_PROCESSOR] FFmpeg command: {' '.join(ffmpeg_cmd)}")
-            
-            # Run FFmpeg command asynchronously
+            # Run command
             process = await asyncio.create_subprocess_exec(
-                *ffmpeg.compile(stream),
+                *cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
